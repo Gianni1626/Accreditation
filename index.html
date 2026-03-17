@@ -837,8 +837,8 @@
   .kbd-key.accent-key { background: #2e2e20; color: var(--accent); border-color: var(--accent2); }
   .kbd-key.close-key  { background: #2e1a1a; color: var(--error); border-color: #5a2a2a; font-size: 18px; min-width:46px; max-width:54px; }
 
-  /* Hidden canvas for QR scan */
-  #scan-canvas { display: none; }
+  /* Hidden canvas for QR scan — visibility:hidden invece di display:none per Safari */
+  #scan-canvas { position:fixed; top:-9999px; left:-9999px; }
 </style>
 </head>
 <body>
@@ -1442,8 +1442,13 @@ async function startCamera() {
       video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
     });
     video.srcObject = videoStream;
+    // Safari richiede play() esplicito
+    video.setAttribute('playsinline', 'true');
+    video.setAttribute('muted', 'true');
+    await video.play().catch(() => {});
     status.textContent = '🔍 Scansione QR in corso...';
-    scanInterval = setInterval(scanFrame, 250);
+    // 150ms per reattività migliore
+    scanInterval = setInterval(scanFrame, 150);
   } catch(e) {
     status.textContent = '⚠️ Camera non disponibile — usa l\'ID manuale';
     console.warn('Camera error:', e);
@@ -1458,13 +1463,19 @@ function stopCamera() {
 function scanFrame() {
   const video = document.getElementById('checkout-video');
   const canvas = document.getElementById('scan-canvas');
-  if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  if (!video || video.readyState < 2 || video.paused) return;
+  const w = video.videoWidth;
+  const h = video.videoHeight;
+  if (!w || !h) return;
+  canvas.width  = w;
+  canvas.height = h;
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+  ctx.drawImage(video, 0, 0, w, h);
+  const imageData = ctx.getImageData(0, 0, w, h);
+  // Prova tutte le inversioni per massima compatibilità
+  const code = jsQR(imageData.data, imageData.width, imageData.height, {
+    inversionAttempts: 'attemptBoth'
+  });
   if (code && code.data.startsWith('VIS-')) {
     doCheckout(code.data);
   }
@@ -1734,7 +1745,7 @@ updateDownloadStatus();
 </script>
 
 <div style="position:fixed;bottom:10px;right:14px;font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);letter-spacing:1px;pointer-events:none;z-index:9999;opacity:0.6;">
-  visitor-accreditation-R14.html
+  visitor-accreditation-R15.html
 </div>
 
 <!-- TOUCH KEYBOARD -->
